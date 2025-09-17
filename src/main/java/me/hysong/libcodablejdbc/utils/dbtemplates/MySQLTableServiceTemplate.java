@@ -3,10 +3,13 @@ package me.hysong.libcodablejdbc.utils.dbtemplates;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
 import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
+import me.hysong.libcodablejdbc.utils.interfaces.ResultSetProcessor;
 import me.hysong.libcodablejdbc.utils.objects.DatabaseElement;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
@@ -14,11 +17,10 @@ import java.util.LinkedHashMap;
 public interface MySQLTableServiceTemplate extends DatabaseTableService {
 
     default LinkedHashMap<Object, DatabaseElement> select(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
-        ResultSet rs = execute(object.getDatabase(), "SELECT * FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()});
-        return getObjectDatabaseElementLinkedHashMap(object, rs);
+        return executeQuery( "SELECT * FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()}, rs -> getObjectDatabaseElementLinkedHashMap(rs, object));
     }
 
-    private LinkedHashMap<Object, DatabaseElement> getObjectDatabaseElementLinkedHashMap(DatabaseElement object, ResultSet rs) throws SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+    private LinkedHashMap<Object, DatabaseElement> getObjectDatabaseElementLinkedHashMap(ResultSet rs, DatabaseElement object) throws SQLException, InitializationViolationException, JDBCReflectionGeneralException {
         LinkedHashMap<Object, DatabaseElement> result = new LinkedHashMap<>();
         Class<?> cz = object.getClass();
         while (rs.next()) {
@@ -31,6 +33,24 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
             }
         }
         return result;
+    }
+
+    default <T> T executeQuery(String sql, Object[] params, ResultSetProcessor<T> resultSetProcessor) throws SQLException, JDBCReflectionGeneralException, InitializationViolationException {
+        Connection con = getConnection();
+        try (PreparedStatement preparedStatement = con.prepareStatement(sql)) {
+            DatabaseElement.setObjects(preparedStatement, params);
+            try (ResultSet rs = preparedStatement.executeQuery()) {
+                return resultSetProcessor.process(rs);
+            }
+        }
+    }
+
+    default int executeUpdate(String sql, Object[] params) throws SQLException {
+        Connection con = getConnection();
+        try (PreparedStatement preparedStatement = con.prepareStatement(sql)) {
+            DatabaseElement.setObjects(preparedStatement, params);
+            return preparedStatement.executeUpdate();
+        }
     }
 
     default LinkedHashMap<Object, DatabaseElement> selectBy(DatabaseElement blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
@@ -48,11 +68,10 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
 
         sb.append(";");
 
-        ResultSet rs = execute(blueprint.getDatabase(), sb.toString(), values);
-        return getObjectDatabaseElementLinkedHashMap(blueprint, rs);
+        return executeQuery(sb.toString(), values, rs -> getObjectDatabaseElementLinkedHashMap(rs, blueprint));
     }
 
-    default ResultSet update(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default int update(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("UPDATE ");
         sb.append(object.getTable()).append(" SET ");
@@ -74,10 +93,10 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         sb.append(" WHERE ").append(object.getPrimaryKeyColumnName()).append(" = ?;");
         params[accessed] = object.getPrimaryKeyValue();
 
-        return execute(object.getDatabase(), sb.toString(), params);
+        return executeUpdate(sb.toString(), params);
     }
 
-    default ResultSet insert(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default int insert(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("INSERT INTO ");
         sb.append(object.getTable()).append(" (");
@@ -107,11 +126,11 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         }
         sb.append(");");
 
-        return execute(object.getDatabase(), sb.toString(), paramValues);
+        return executeUpdate(sb.toString(), paramValues);
     }
 
-    default ResultSet delete(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
-        return execute(object.getDatabase(), "DELETE FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()});
+    default int delete(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+        return executeUpdate("DELETE FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()});
     }
 
 }

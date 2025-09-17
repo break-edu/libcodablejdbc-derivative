@@ -6,7 +6,6 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.TYPE})
-public @interface RSMapping {
-    String mapTo() default "";
+@Target({ElementType.TYPE})
+public @interface Record {
 }

@@ -7,33 +7,34 @@ import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.math.BigDecimal;
+import java.sql.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
 
 public abstract class DatabaseElement implements RSCodable {
 
     private boolean isPKInitialized = false;
-    private DatabaseTableService controller;
+    private final DatabaseTableService controller;
 
     public DatabaseElement(DatabaseTableService controller) {
         this.controller = controller;
     }
 
-    public Object update() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public int update() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         return controller.update(this);
     }
 
-    public Object insert() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public int insert() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         return controller.insert(this);
     }
 
-    public Object delete() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public int delete() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         return controller.delete(this);
     }
 
-    public Object select() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public LinkedHashMap <Object, DatabaseElement> select() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         return controller.select(this);
     }
 
@@ -86,6 +87,7 @@ public abstract class DatabaseElement implements RSCodable {
             Field f = this.getClass().getDeclaredField(annotation.column());
             f.setAccessible(true);
             f.set(this, value);
+            isPKInitialized = true;
         } catch (IllegalAccessException | NoSuchFieldException e) {
             throw new JDBCReflectionGeneralException(e);
         }
@@ -94,18 +96,11 @@ public abstract class DatabaseElement implements RSCodable {
     public LinkedHashMap<String, String> getColumns() {
         LinkedHashMap<String, String> columns = new LinkedHashMap<>();
         for (Field field : this.getClass().getDeclaredFields()) {
-            if (!RSCodableUtil.isMarkedMappingElement(field, RSMapping.class)) {
+            if (!RSCodableUtil.isMarkedMappingElement(field)) {
                 continue;
             }
             field.setAccessible(true);
-
-            RSMapping annotation = field.getAnnotation(RSMapping.class);
-            String fieldSpecName = annotation.mapTo();
-            if (fieldSpecName.isEmpty()) {
-                fieldSpecName = field.getName();
-            }
-
-            columns.put(fieldSpecName, field.getType().getName());
+            columns.put(RSCodableUtil.getFieldNameInDB(field), field.getType().getName());
         }
         return columns;
     }
@@ -113,19 +108,56 @@ public abstract class DatabaseElement implements RSCodable {
     public LinkedHashMap<String, Object> getValues() throws IllegalAccessException {
         LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         for (Field field : this.getClass().getDeclaredFields()) {
-            if (!RSCodableUtil.isMarkedMappingElement(field, RSMapping.class)) {
+            if (!RSCodableUtil.isMarkedMappingElement(field)) {
                 continue;
             }
 
-            RSMapping annotation = field.getAnnotation(RSMapping.class);
-            String fieldSpecName = annotation.mapTo();
-            if (fieldSpecName.isEmpty()) {
-                fieldSpecName = field.getName();
-            }
-
             field.setAccessible(true);
-            values.put(fieldSpecName, field.get(this));
+            values.put(RSCodableUtil.getFieldNameInDB(field), field.get(this));
         }
         return values;
+    }
+
+    public static PreparedStatement setObjects(PreparedStatement preparedStatement, Object... parameters) {
+        try {
+            // PreparedStatement parameters are 1-indexed, so we start i at 1.
+            for (int i = 0; i < parameters.length; i++) {
+                int parameterIndex = i + 1;
+                Object param = parameters[i];
+
+                switch (param) {
+                    case null ->
+                        // Handle null values by setting the SQL type to NULL.
+                            preparedStatement.setNull(parameterIndex, Types.NULL);
+                    case String s -> preparedStatement.setString(parameterIndex, s);
+                    case Integer integer -> preparedStatement.setInt(parameterIndex, integer);
+                    case Long l -> preparedStatement.setLong(parameterIndex, l);
+                    case Double v -> preparedStatement.setDouble(parameterIndex, v);
+                    case BigDecimal bigDecimal -> preparedStatement.setBigDecimal(parameterIndex, bigDecimal);
+                    case Boolean b -> preparedStatement.setBoolean(parameterIndex, b);
+                    case LocalDate localDate -> preparedStatement.setObject(parameterIndex, localDate);
+                    case LocalDateTime localDateTime -> preparedStatement.setObject(parameterIndex, localDateTime);
+                    case Timestamp timestamp -> preparedStatement.setTimestamp(parameterIndex, timestamp);
+                    case java.sql.Date date -> preparedStatement.setDate(parameterIndex, date);
+
+                    // TODO Experimental
+                    case ArrayList<?> x -> preparedStatement.setArray(parameterIndex, (Array) x);
+                    case LinkedList<?> x -> preparedStatement.setArray(parameterIndex, (Array) x);
+                    case List<?> x -> preparedStatement.setArray(parameterIndex, (Array) x);
+//                    case LinkedHashMap<?, ?> x -> preparedStatement.setArray(parameterIndex, mapTypeToArrayType(x));
+//                    case HashMap<?, ?> x -> preparedStatement.setArray(parameterIndex, mapTypeToArrayType(x));
+//                    case Map<?, ?> x -> preparedStatement.setArray(parameterIndex, mapTypeToArrayType(x));
+
+                    default ->
+                        // As a fallback, use setObject for any other type.
+                            preparedStatement.setObject(parameterIndex, param);
+                }
+            }
+        } catch (SQLException e) {
+            // It's good practice to wrap the checked SQLException in an unchecked
+            // RuntimeException to avoid cluttering the calling code with try-catch blocks.
+            throw new RuntimeException("Failed to set PreparedStatement parameters", e);
+        }
+        return preparedStatement;
     }
 }
