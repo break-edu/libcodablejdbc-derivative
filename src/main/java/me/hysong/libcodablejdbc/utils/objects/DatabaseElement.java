@@ -1,5 +1,6 @@
 package me.hysong.libcodablejdbc.utils.objects;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import me.hysong.libcodablejdbc.*;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
@@ -14,7 +15,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 public abstract class DatabaseElement implements RSCodable {
-
+    private static final ObjectMapper objectMapper = new ObjectMapper();
     private boolean isPKInitialized = false;
     private final DatabaseTableService controller;
 
@@ -135,42 +136,43 @@ public abstract class DatabaseElement implements RSCodable {
 
     public static PreparedStatement setObjects(PreparedStatement preparedStatement, Object... parameters) {
         try {
-            // PreparedStatement parameters are 1-indexed, so we start i at 1.
             for (int i = 0; i < parameters.length; i++) {
                 int parameterIndex = i + 1;
                 Object param = parameters[i];
-
-                switch (param) {
-                    case null ->
-                        // Handle null values by setting the SQL type to NULL.
-                            preparedStatement.setNull(parameterIndex, Types.NULL);
-                    case String s -> preparedStatement.setString(parameterIndex, s);
-                    case Integer integer -> preparedStatement.setInt(parameterIndex, integer);
-                    case Long l -> preparedStatement.setLong(parameterIndex, l);
-                    case Double v -> preparedStatement.setDouble(parameterIndex, v);
-                    case BigDecimal bigDecimal -> preparedStatement.setBigDecimal(parameterIndex, bigDecimal);
-                    case Boolean b -> preparedStatement.setBoolean(parameterIndex, b);
-                    case LocalDate localDate -> preparedStatement.setObject(parameterIndex, localDate);
-                    case LocalDateTime localDateTime -> preparedStatement.setObject(parameterIndex, localDateTime);
-                    case Timestamp timestamp -> preparedStatement.setTimestamp(parameterIndex, timestamp);
-                    case java.sql.Date date -> preparedStatement.setDate(parameterIndex, date);
-
-                    // TODO Experimental
-                    case ArrayList<?> x -> preparedStatement.setArray(parameterIndex, (Array) x);
-                    case LinkedList<?> x -> preparedStatement.setArray(parameterIndex, (Array) x);
-                    case List<?> x -> preparedStatement.setArray(parameterIndex, (Array) x);
-//                    case LinkedHashMap<?, ?> x -> preparedStatement.setArray(parameterIndex, mapTypeToArrayType(x));
-//                    case HashMap<?, ?> x -> preparedStatement.setArray(parameterIndex, mapTypeToArrayType(x));
-//                    case Map<?, ?> x -> preparedStatement.setArray(parameterIndex, mapTypeToArrayType(x));
-
-                    default ->
-                        // As a fallback, use setObject for any other type.
-                            preparedStatement.setObject(parameterIndex, param);
+                if (param == null) {
+                    preparedStatement.setNull(parameterIndex, Types.NULL);
+                } else if (param instanceof String s) {
+                    preparedStatement.setString(parameterIndex, s);
+                } else if (param instanceof Integer integer) {
+                    preparedStatement.setInt(parameterIndex, integer);
+                } else if (param instanceof Long l) {
+                    preparedStatement.setLong(parameterIndex, l);
+                } else if (param instanceof Double v) {
+                    preparedStatement.setDouble(parameterIndex, v);
+                } else if (param instanceof BigDecimal bigDecimal) {
+                    preparedStatement.setBigDecimal(parameterIndex, bigDecimal);
+                } else if (param instanceof Boolean b) {
+                    preparedStatement.setBoolean(parameterIndex, b);
+                } else if (param instanceof LocalDate localDate) {
+                    preparedStatement.setObject(parameterIndex, localDate);
+                } else if (param instanceof LocalDateTime localDateTime) {
+                    preparedStatement.setObject(parameterIndex, localDateTime);
+                } else if (param instanceof Timestamp timestamp) {
+                    preparedStatement.setTimestamp(parameterIndex, timestamp);
+                } else if (param instanceof java.sql.Date date) {
+                    preparedStatement.setDate(parameterIndex, date);
+                } else if (param instanceof List || param instanceof Map) {
+                    try {
+                        String jsonString = objectMapper.writeValueAsString(param);
+                        preparedStatement.setString(parameterIndex, jsonString);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to serialize object to JSON for PreparedStatement", e);
+                    }
+                } else {
+                    preparedStatement.setObject(parameterIndex, param);
                 }
             }
         } catch (SQLException e) {
-            // It's good practice to wrap the checked SQLException in an unchecked
-            // RuntimeException to avoid cluttering the calling code with try-catch blocks.
             throw new RuntimeException("Failed to set PreparedStatement parameters", e);
         }
         return preparedStatement;
