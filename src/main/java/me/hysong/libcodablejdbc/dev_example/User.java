@@ -9,36 +9,43 @@ import me.hysong.libcodablejdbc.Column;
 import me.hysong.libcodablejdbc.Record;
 import me.hysong.libcodablejdbc.utils.objects.DatabaseElement;
 
+import java.util.Scanner;
+import java.util.function.UnaryOperator;
+
 @Getter
 @Record // This applies @Column at all fields with its name. Name mapping will prioritize @Column(mapTo=xxx).
 @Database(db="unitable", table="users")
-@PrimaryKey(column="id")
-public class User extends DatabaseElement implements RSCodable {
+@PrimaryKey(column="email") // Explicitly specify
+public class User extends DatabaseElement {
 
     /*
     Database example
-    - unique_id: Integer, PK, AUTO_INCREMENT (Manually mapped to id field using @Column annotation)
-    - name: Text                             (Automatically mapped)
-    - email: Text                            (Automatically mapped)
+    - id  : Integer, AUTO_INCREMENT          (Automatically mapped)
+    - name: Text                             (Manually mapped with realName field using @Column annotation)
+    - email: Text, PK                        (Automatically mapped)
     - age: Integer                           (Automatically mapped)
      */
 
-    @Column(mapTo = "unique_id") private final int id = -1;
-    @Setter private String name = "John Appleseed";
-    @Setter private String email = "john@apple.com";
-    @Setter private int age = 23;
+    private int id = -1;
+    @Column(mapTo = "name") private String realName = "John Appleseed";
+    private String email = "john@apple.com";
+    private String password = "";
+    private int age = 23;
 
     public User() {
         super(new LocalSQLTableServiceSample()); // .update() .select() etc... functions will use this controller
     }
 
-    public static void main(String[] args) throws Exception{
+    public String toString() {
+        return "User(id=" + id + ", name=" + realName + ", email=" + email + ", password=" + password + ", age=" + age + ")";
+    }
+
+    public static void main(String[] args) throws Exception {
+        String email = "admin@default.com";
         User o = new User();
-        o.setPrimaryKeyValue(1);
-        o.select();                      // Load from database
-        System.out.println(o.getName()); // Name is loaded from database
-        o.setName("Jonathan Appleseed");
-        o.update();                      // Update committed to database
+        o.setPrimaryKeyValue(email);   // .select() will use PK to search
+        o.select();                    // Load result to object
+        System.out.println(o);
     }
 }
 

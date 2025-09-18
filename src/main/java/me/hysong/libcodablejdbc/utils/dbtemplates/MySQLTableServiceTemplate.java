@@ -16,8 +16,8 @@ import java.util.LinkedHashMap;
 
 public interface MySQLTableServiceTemplate extends DatabaseTableService {
 
-    default LinkedHashMap<Object, DatabaseElement> select(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
-        return executeQuery( "SELECT * FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()}, rs -> getObjectDatabaseElementLinkedHashMap(rs, object));
+    default LinkedHashMap<Object, DatabaseElement> selectAll(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+        return executeQuery(object.getDatabase(), "SELECT * FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()}, rs -> getObjectDatabaseElementLinkedHashMap(rs, object));
     }
 
     private LinkedHashMap<Object, DatabaseElement> getObjectDatabaseElementLinkedHashMap(ResultSet rs, DatabaseElement object) throws SQLException, InitializationViolationException, JDBCReflectionGeneralException {
@@ -35,8 +35,8 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         return result;
     }
 
-    default <T> T executeQuery(String sql, Object[] params, ResultSetProcessor<T> resultSetProcessor) throws SQLException, JDBCReflectionGeneralException, InitializationViolationException {
-        Connection con = getConnection();
+    default <T> T executeQuery(String database, String sql, Object[] params, ResultSetProcessor<T> resultSetProcessor) throws SQLException, JDBCReflectionGeneralException, InitializationViolationException {
+        Connection con = getConnection(database);
         try (PreparedStatement preparedStatement = con.prepareStatement(sql)) {
             DatabaseElement.setObjects(preparedStatement, params);
             try (ResultSet rs = preparedStatement.executeQuery()) {
@@ -45,8 +45,8 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         }
     }
 
-    default int executeUpdate(String sql, Object[] params) throws SQLException {
-        Connection con = getConnection();
+    default int executeUpdate(String database, String sql, Object[] params) throws SQLException {
+        Connection con = getConnection(database);
         try (PreparedStatement preparedStatement = con.prepareStatement(sql)) {
             DatabaseElement.setObjects(preparedStatement, params);
             return preparedStatement.executeUpdate();
@@ -68,7 +68,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
 
         sb.append(";");
 
-        return executeQuery(sb.toString(), values, rs -> getObjectDatabaseElementLinkedHashMap(rs, blueprint));
+        return executeQuery(blueprint.getDatabase(), sb.toString(), values, rs -> getObjectDatabaseElementLinkedHashMap(rs, blueprint));
     }
 
     default int update(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
@@ -93,7 +93,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         sb.append(" WHERE ").append(object.getPrimaryKeyColumnName()).append(" = ?;");
         params[accessed] = object.getPrimaryKeyValue();
 
-        return executeUpdate(sb.toString(), params);
+        return executeUpdate(object.getDatabase(), sb.toString(), params);
     }
 
     default int insert(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
@@ -126,11 +126,11 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         }
         sb.append(");");
 
-        return executeUpdate(sb.toString(), paramValues);
+        return executeUpdate(object.getDatabase(), sb.toString(), paramValues);
     }
 
     default int delete(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
-        return executeUpdate("DELETE FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()});
+        return executeUpdate(object.getDatabase(), "DELETE FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;", new Object[]{object.getPrimaryKeyValue()});
     }
 
 }

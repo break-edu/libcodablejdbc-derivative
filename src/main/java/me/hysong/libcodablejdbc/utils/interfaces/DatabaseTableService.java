@@ -12,13 +12,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public interface DatabaseTableService {
-    Connection getConnection() throws SQLException;
+    Connection getConnection(String database) throws SQLException;
     
-    <T> T executeQuery(String sql, Object[] params, ResultSetProcessor<T> resultSetProcessor) throws SQLException, IOException, JDBCReflectionGeneralException, InitializationViolationException;
+    <T> T executeQuery(String database, String sql, Object[] params, ResultSetProcessor<T> resultSetProcessor) throws SQLException, IOException, JDBCReflectionGeneralException, InitializationViolationException;
 
-    int executeUpdate(String sql, Object[] params) throws SQLException, IOException;
+    int executeUpdate(String database, String sql, Object[] params) throws SQLException, IOException;
 
-    LinkedHashMap<Object, DatabaseElement> select(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException;
+    LinkedHashMap<Object, DatabaseElement> selectAll(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException;
 
     LinkedHashMap<Object, DatabaseElement> selectBy(DatabaseElement blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException;
 
