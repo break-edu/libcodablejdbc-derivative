@@ -34,8 +34,22 @@ public abstract class DatabaseElement implements RSCodable {
         return controller.delete(this);
     }
 
-    public LinkedHashMap <Object, DatabaseElement> select() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
-        return controller.select(this);
+    public LinkedHashMap <Object, DatabaseElement> selectAll() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+        return controller.selectAll(this);
+    }
+
+    public void select() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException, IllegalAccessException {
+        LinkedHashMap<Object, DatabaseElement> selected = selectAll();
+        if (selected == null || selected.isEmpty()) {
+            return;
+        }
+        Object firstIndex = selected.sequencedKeySet().getFirst();
+        DatabaseElement loaded = selected.get(firstIndex);
+
+        for (Field field : loaded.getClass().getDeclaredFields()) {
+            field.setAccessible(true);
+            field.set(this, field.get(loaded));
+        }
     }
 
     public String getDatabase() throws InitializationViolationException{
@@ -69,6 +83,7 @@ public abstract class DatabaseElement implements RSCodable {
         PrimaryKey annotation = this.getClass().getAnnotation(PrimaryKey.class);
         try {
             Field f = this.getClass().getDeclaredField(annotation.column());
+            f.setAccessible(true);
             return f.get(this);
         } catch (NoSuchFieldException | IllegalAccessException e) {
             throw new JDBCReflectionGeneralException(e);
