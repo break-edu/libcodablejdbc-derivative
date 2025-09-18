@@ -8,4 +8,8 @@ public class JDBCReflectionGeneralException extends Exception {
     public JDBCReflectionGeneralException(Exception e) {
         super(e);
     }
+
+    public JDBCReflectionGeneralException(String s, ReflectiveOperationException e) {
+        super(s, e);
+    }
 }
