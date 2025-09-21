@@ -1,22 +1,17 @@
 package me.hysong.libcodablejdbc.dev_example;
 
 import lombok.Getter;
-import lombok.Setter;
 import me.hysong.libcodablejdbc.Database;
 import me.hysong.libcodablejdbc.PrimaryKey;
-import me.hysong.libcodablejdbc.RSCodable;
 import me.hysong.libcodablejdbc.Column;
 import me.hysong.libcodablejdbc.Record;
-import me.hysong.libcodablejdbc.utils.objects.DatabaseElement;
-
-import java.util.Scanner;
-import java.util.function.UnaryOperator;
+import me.hysong.libcodablejdbc.utils.objects.DatabaseRecord;
 
 @Getter
 @Record // This applies @Column at all fields with its name. Name mapping will prioritize @Column(mapTo=xxx).
 @Database(db="unitable", table="users")
 @PrimaryKey(column="email") // Explicitly specify
-public class User extends DatabaseElement {
+public class User extends DatabaseRecord {
 
     /*
     Database example

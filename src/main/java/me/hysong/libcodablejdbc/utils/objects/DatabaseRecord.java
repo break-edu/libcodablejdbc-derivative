@@ -5,6 +5,7 @@ import me.hysong.libcodablejdbc.*;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
 import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
+import me.hysong.libcodablejson.JsonCodable;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -14,12 +15,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
-public abstract class DatabaseElement implements RSCodable {
+public abstract class DatabaseRecord implements RSCodable {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private boolean isPKInitialized = false;
     private final DatabaseTableService controller;
 
-    public DatabaseElement(DatabaseTableService controller) {
+    public DatabaseRecord(DatabaseTableService controller) {
         this.controller = controller;
     }
 
@@ -35,17 +36,17 @@ public abstract class DatabaseElement implements RSCodable {
         return controller.delete(this);
     }
 
-    public LinkedHashMap <Object, DatabaseElement> selectAll() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public LinkedHashMap <Object, DatabaseRecord> selectAll() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         return controller.selectAll(this);
     }
 
     public void select() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException, IllegalAccessException {
-        LinkedHashMap<Object, DatabaseElement> selected = selectAll();
+        LinkedHashMap<Object, DatabaseRecord> selected = selectAll();
         if (selected == null || selected.isEmpty()) {
             return;
         }
         Object firstIndex = selected.sequencedKeySet().getFirst();
-        DatabaseElement loaded = selected.get(firstIndex);
+        DatabaseRecord loaded = selected.get(firstIndex);
 
         for (Field field : loaded.getClass().getDeclaredFields()) {
             field.setAccessible(true);
@@ -121,6 +122,18 @@ public abstract class DatabaseElement implements RSCodable {
         return columns;
     }
 
+    public ArrayList<String> getColumnNames() {
+        ArrayList<String> columnNames = new ArrayList<>();
+        for (Field field : this.getClass().getDeclaredFields()) {
+            if (!RSCodableUtil.isMarkedMappingElement(field)) {
+                continue;
+            }
+            field.setAccessible(true);
+            columnNames.add(RSCodableUtil.getFieldNameInDB(field));
+        }
+        return columnNames;
+    }
+
     public LinkedHashMap<String, Object> getValues() throws IllegalAccessException {
         LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         for (Field field : this.getClass().getDeclaredFields()) {
@@ -168,6 +181,11 @@ public abstract class DatabaseElement implements RSCodable {
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to serialize object to JSON for PreparedStatement", e);
                     }
+                } else if (param.getClass().isAssignableFrom(JsonCodable.class)) {
+                    String jsonString = ((JsonCodable) param).toJsonString();
+                    preparedStatement.setString(parameterIndex, jsonString);
+//                } else if (param instanceof DbPtr) {
+//                    preparedStatement.setObject(parameterIndex, param.toString());
                 } else {
                     preparedStatement.setObject(parameterIndex, param);
                 }

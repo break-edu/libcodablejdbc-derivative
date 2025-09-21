@@ -1,5 +1,9 @@
 package me.hysong.libcodablejdbc;
 
+import com.google.gson.JsonParser;
+//import me.hysong.libcodablejdbc.utils.objects.DbPtr;
+import me.hysong.libcodablejson.JsonCodable;
+
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.sql.*;
@@ -133,6 +137,21 @@ public interface RSCodable {
                         }
                     }
 
+//                } else if (fieldType == DbPtr.class) {
+//                    // Database Pointer. Keep the pointer only.
+
+
+                } else if (fieldType.isAssignableFrom(JsonCodable.class)) {
+                    // Decode back to java object
+                    try {
+                        String rawJson = rs.getString(columnName);
+                        JsonCodable jc = (JsonCodable) (fieldType.getConstructor().newInstance());
+                        jc.fromJson(JsonParser.parseString(rawJson));
+
+                    } catch (Throwable ignore) {
+                        String s = rs.getString(columnName);
+                        value = (s == null) ? null : java.util.UUID.fromString(s);
+                    }
                 } else {
                     // Last resort: JDBC 4.2 typed getObject; if unsupported, plain getObject
                     try {
