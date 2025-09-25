@@ -2,6 +2,7 @@ package me.hysong.libcodablejdbc;
 
 import com.google.gson.JsonParser;
 //import me.hysong.libcodablejdbc.utils.objects.DbPtr;
+import me.hysong.libcodablejdbc.utils.exceptions.PseudoEnumValueNotPresentException;
 import me.hysong.libcodablejson.JsonCodable;
 
 import java.lang.reflect.Field;
@@ -10,6 +11,7 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -120,6 +122,27 @@ public interface RSCodable {
                     } catch (Throwable ignore) {
                         String s = rs.getString(columnName);
                         value = (s == null) ? null : java.util.UUID.fromString(s);
+                    }
+
+                } else if (field.isAnnotationPresent(PseudoEnum.class)) {
+                    PseudoEnum enumValue = field.getAnnotation(PseudoEnum.class);
+                    String[] accepts = enumValue.accepts();
+                    String valueNow = null;
+                    try {
+                        valueNow = rs.getString(columnName);
+                    } catch (Throwable e) {
+                        e.printStackTrace();
+                    }
+                    if (valueNow == null) {
+                        if (!enumValue.nullable()) {
+                            throw new NullPointerException("Non-nullable field has null value returned.");
+                        } else {
+                            continue;
+                        }
+                    } else if (Arrays.asList(accepts).contains(valueNow)) {
+                        value = valueNow;
+                    } else {
+                        throw new PseudoEnumValueNotPresentException("Value '" + valueNow + "' is not in " + Arrays.toString(accepts));
                     }
 
                 } else if (fieldType.isEnum()) {

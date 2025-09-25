@@ -1,6 +1,7 @@
 package me.hysong.libcodablejdbc.utils.dbtemplates;
 
 import me.hysong.libcodablejdbc.Automatic;
+import me.hysong.libcodablejdbc.PseudoEnum;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
 import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
@@ -16,7 +17,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 /**
  * A template interface for SQLite database table services. It provides default
@@ -227,6 +230,19 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         Object[] params = new Object[values.size() + 1];
         int i = 0;
         for (String key : values.keySet()) {
+            try {
+                if (object.getClass().getDeclaredField(key).isAnnotationPresent(PseudoEnum.class)) {
+                    PseudoEnum enumValue = object.getClass().getDeclaredField(key).getAnnotation(PseudoEnum.class);
+                    if (!Arrays.asList(enumValue.accepts()).contains((String) values.get(key))) {
+                        throw new RuntimeException("Pseudo enum does not accept value: " + values.get(key));
+                    }
+                    if (!enumValue.nullable() && values.get(key) == null) {
+                        throw new RuntimeException("Pseudo enum does not allow null but got null for: " + key);
+                    }
+                }
+            } catch (NoSuchFieldException | SecurityException e) {
+                e.printStackTrace();
+            }
             if (i > 0) sb.append(", ");
             sb.append(key).append(" = ?");
             params[i++] = values.get(key);
@@ -262,13 +278,21 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         Object[] paramValues = new Object[values.size()];
         int i = 0;
         for (String key : values.keySet()) {
-
             try {
                 Field annotationChk = object.getClass().getDeclaredField(key);
                 if (annotationChk.isAnnotationPresent(Automatic.class)) {
                     continue;
                 }
-            } catch (Exception e) {
+                if (object.getClass().getDeclaredField(key).isAnnotationPresent(PseudoEnum.class)) {
+                    PseudoEnum enumValue = object.getClass().getDeclaredField(key).getAnnotation(PseudoEnum.class);
+                    if (!Arrays.asList(enumValue.accepts()).contains((String) values.get(key))) {
+                        throw new RuntimeException("Pseudo enum does not accept value: " + values.get(key));
+                    }
+                    if (!enumValue.nullable() && values.get(key) == null) {
+                        throw new RuntimeException("Pseudo enum does not allow null but got null for: " + key);
+                    }
+                }
+            } catch (NoSuchFieldException | SecurityException e) {
                 throw new RuntimeException(e);
             }
 
