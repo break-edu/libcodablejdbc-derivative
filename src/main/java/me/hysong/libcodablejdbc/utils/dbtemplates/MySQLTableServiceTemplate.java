@@ -1,5 +1,6 @@
 package me.hysong.libcodablejdbc.utils.dbtemplates;
 
+import me.hysong.libcodablejdbc.Automatic;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
 import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
@@ -8,6 +9,7 @@ import me.hysong.libcodablejdbc.utils.objects.DatabaseRecord;
 import me.hysong.libcodablejdbc.utils.objects.SearchExpression;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -260,6 +262,16 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         Object[] paramValues = new Object[values.size()];
         int i = 0;
         for (String key : values.keySet()) {
+
+            try {
+                Field annotationChk = object.getClass().getDeclaredField(key);
+                if (annotationChk.isAnnotationPresent(Automatic.class)) {
+                    continue;
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+
             if (i > 0) {
                 columnNames.append(", ");
                 valuePlaceholders.append(", ");

@@ -78,6 +78,7 @@ public abstract class DatabaseRecord implements RSCodable {
         return annotation.column();
     }
 
+
     public Object getPrimaryKeyValue() throws InitializationViolationException, JDBCReflectionGeneralException {
         if (!this.getClass().isAnnotationPresent(PrimaryKey.class)) {
             throw new InitializationViolationException("Primary key is not configured using @PrimaryKey annotation.");
