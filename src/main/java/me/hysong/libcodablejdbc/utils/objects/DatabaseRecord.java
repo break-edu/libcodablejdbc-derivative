@@ -1,6 +1,7 @@
 package me.hysong.libcodablejdbc.utils.objects;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Getter;
 import me.hysong.libcodablejdbc.*;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
@@ -17,8 +18,8 @@ import java.util.*;
 
 public abstract class DatabaseRecord implements RSCodable {
     private static final ObjectMapper objectMapper = new ObjectMapper();
-    private boolean isPKInitialized = false;
-    private final DatabaseTableService controller;
+    @Getter private boolean isPKInitialized = false;
+    @Getter private final DatabaseTableService controller;
 
     public DatabaseRecord(DatabaseTableService controller) {
         this.controller = controller;
@@ -196,4 +197,5 @@ public abstract class DatabaseRecord implements RSCodable {
         }
         return preparedStatement;
     }
+
 }

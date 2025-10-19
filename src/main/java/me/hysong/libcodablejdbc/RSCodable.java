@@ -2,18 +2,22 @@ package me.hysong.libcodablejdbc;
 
 import com.google.gson.JsonParser;
 //import me.hysong.libcodablejdbc.utils.objects.DbPtr;
+import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
+import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
 import me.hysong.libcodablejdbc.utils.exceptions.PseudoEnumValueNotPresentException;
+import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
+import me.hysong.libcodablejdbc.utils.objects.DatabaseRecord;
+import me.hysong.libcodablejdbc.utils.objects.SearchExpression;
 import me.hysong.libcodablejson.JsonCodable;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public interface RSCodable {
 
@@ -181,6 +185,39 @@ public interface RSCodable {
                         value = rs.getObject(columnName, fieldType);
                     } catch (Throwable ignore) {
                         value = rs.getObject(columnName);
+                    }
+                }
+
+                // If field has @ForeignKey annotation, fetch it if it is specified
+                if (field.isAnnotationPresent(ForeignKey.class)) {
+                    ForeignKey fk = field.getAnnotation(ForeignKey.class);
+                    if (fk.alwaysFetch() && value != null && fk.assignTo() != null && !fk.assignTo().isEmpty()) {
+                        try {
+                            // Fetch the referenced record
+                            Class<? extends DatabaseRecord> fkType = fk.type();
+                            String referenceColumn = fk.reference();
+
+                            // Build search expressions
+                            SearchExpression[] expressions = new SearchExpression[1];
+                            expressions[0] = new SearchExpression()
+                                    .column(referenceColumn)
+                                    .isEqualTo(value);
+
+                            // Execute search
+                            DatabaseRecord referencedRecord = fk.type().getDeclaredConstructor(DatabaseTableService.class).newInstance(((DatabaseRecord) this).getController());
+                            LinkedHashMap<Object, DatabaseRecord> result = ((DatabaseRecord) this).getController().searchBy(referencedRecord, 0, 1, expressions);
+                            if (result != null && !result.isEmpty()) {
+                                DatabaseRecord fetchedRecord = result.values().iterator().next();
+                                // Assign to the specified field
+                                Field assignField = this.getClass().getDeclaredField(fk.assignTo());
+                                assignField.setAccessible(true);
+                                assignField.set(this, fetchedRecord);
+                            }
+
+                        // Fetch failure should not block main assignment
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
 
