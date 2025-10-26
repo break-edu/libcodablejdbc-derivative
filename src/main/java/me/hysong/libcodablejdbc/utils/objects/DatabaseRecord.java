@@ -119,7 +119,21 @@ public abstract class DatabaseRecord implements RSCodable {
                 continue;
             }
             field.setAccessible(true);
-            columns.put(RSCodableUtil.getFieldNameInDB(field), field.getType().getName());
+            if (field.getType().isAssignableFrom(CompositionObject.class)) {
+                CompositionObject compositionObject;
+                try {
+                    compositionObject = (CompositionObject) field.get(this);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+                compositionObject.setPrefix(field.getName());
+                HashMap<String, Object> keys = compositionObject.decompose();
+                for (String key : keys.keySet()) {
+                    columns.put(key, keys.get(key).getClass().getName());
+                }
+            } else {
+                columns.put(RSCodableUtil.getFieldNameInDB(field), field.getType().getName());
+            }
         }
         return columns;
     }
@@ -131,6 +145,18 @@ public abstract class DatabaseRecord implements RSCodable {
                 continue;
             }
             field.setAccessible(true);
+            if (field.getType().isAssignableFrom(CompositionObject.class)) {
+                CompositionObject compositionObject;
+                try {
+                    compositionObject = (CompositionObject) field.get(this);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+                compositionObject.setPrefix(field.getName());
+                String[] keys = compositionObject.compositionKeys();
+                Collections.addAll(columnNames, keys);
+                continue;
+            }
             columnNames.add(RSCodableUtil.getFieldNameInDB(field));
         }
         return columnNames;
@@ -144,6 +170,15 @@ public abstract class DatabaseRecord implements RSCodable {
             }
 
             field.setAccessible(true);
+            if (field.getType().isAssignableFrom(CompositionObject.class)) {
+                CompositionObject compositionObject = (CompositionObject) field.get(this);
+                compositionObject.setPrefix(field.getName());
+                HashMap<String, Object> decomposed = compositionObject.decompose();
+                for (String key : decomposed.keySet()) {
+                    values.put(key, decomposed.get(key));
+                }
+                continue;
+            }
             values.put(RSCodableUtil.getFieldNameInDB(field), field.get(this));
         }
         return values;
@@ -186,8 +221,14 @@ public abstract class DatabaseRecord implements RSCodable {
                 } else if (param.getClass().isAssignableFrom(JsonCodable.class)) {
                     String jsonString = ((JsonCodable) param).toJsonString();
                     preparedStatement.setString(parameterIndex, jsonString);
-//                } else if (param instanceof DbPtr) {
-//                    preparedStatement.setObject(parameterIndex, param.toString());
+                } else if (param.getClass().isAssignableFrom(CompositionObject.class)) {
+                    try {
+                        LinkedHashMap<String, Object> decomposed = ((CompositionObject) param).decompose();
+                        String jsonString = objectMapper.writeValueAsString(decomposed);
+                        preparedStatement.setString(parameterIndex, jsonString);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to serialize CompositionObject to JSON for PreparedStatement", e);
+                    }
                 } else {
                     preparedStatement.setObject(parameterIndex, param);
                 }
@@ -196,6 +237,18 @@ public abstract class DatabaseRecord implements RSCodable {
             throw new RuntimeException("Failed to set PreparedStatement parameters", e);
         }
         return preparedStatement;
+    }
+
+    public boolean buildTable() {
+        return false;
+    }
+
+    public void deepFetch(int depth) {
+        // TODO: implement deep fetch logic
+    }
+
+    public void deepFetch() {
+        deepFetch(1);
     }
 
 }
