@@ -10,6 +10,7 @@ import me.hysong.libcodablejson.JsonCodable;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.time.LocalDate;
@@ -240,11 +241,127 @@ public abstract class DatabaseRecord implements RSCodable {
     }
 
     public boolean buildTable() {
-        return false;
+        // Get @Database annotation
+        if (!this.getClass().isAnnotationPresent(Database.class)) {
+            throw new RuntimeException("Database is not configured using @Database(db=...) annotation.");
+        }
+        Database dbAnnotation = this.getClass().getAnnotation(Database.class);
+        String dbName = dbAnnotation.db();
+        String tableName = dbAnnotation.table();
+        String query = "CREATE TABLE IF NOT EXISTS " + dbName + "." + tableName + " (";
+        ArrayList<String> columnDefs = new ArrayList<>();
+        for (Field field : this.getClass().getDeclaredFields()) {
+            if (!RSCodableUtil.isMarkedMappingElement(field)) {
+                continue;
+            }
+            String columnName = RSCodableUtil.getFieldNameInDB(field);
+            String sqlType = RSCodableUtil.mapJavaTypeToSQLType(field.getType());
+            String columnDef = columnName + " " + sqlType;
+            if (this.getClass().isAnnotationPresent(PrimaryKey.class)) {
+                PrimaryKey pkAnnotation = this.getClass().getAnnotation(PrimaryKey.class);
+                if (pkAnnotation.column().equals(columnName)) {
+                    columnDef += " PRIMARY KEY";
+                }
+            }
+            columnDefs.add(columnDef);
+        }
+
+        query += String.join(", ", columnDefs) + ");";
+        System.out.println("DEBUG: Statement = " + query);
+        try (Connection conn = controller.getConnection(dbName); Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(query);
+            return true;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     public void deepFetch(int depth) {
-        // TODO: implement deep fetch logic
+         // Iterate through fields with @ForeignKey or @ForeignKeyList annotation
+        for (Field field : this.getClass().getDeclaredFields()) {
+            if (field.isAnnotationPresent(ForeignKeyList.class)) {
+                ForeignKeyList fkListAnnotation = field.getAnnotation(ForeignKeyList.class);
+                Class<? extends DatabaseRecord> foreignClass = fkListAnnotation.type();
+                String foreignKeyColumn = fkListAnnotation.reference();
+                String assignTo = fkListAnnotation.assignTo();
+
+                // Current field is expected to have ArrayList<?> type which is list of foreign keys
+                field.setAccessible(true);
+                try {
+                    Object foreignKeyListObj = field.get(this);
+                    if (!(foreignKeyListObj instanceof ArrayList<?> foreignKeyList)) {
+                        continue; // Skip if not an ArrayList
+                    }
+
+                    // Prepare to collect fetched foreign records
+                    ArrayList<DatabaseRecord> fetchedRecords = new ArrayList<>();
+
+                    // For each foreign key, fetch the corresponding record
+                    for (Object foreignKeyValue : foreignKeyList) {
+                        DatabaseRecord foreignRecordInstance = foreignClass.getDeclaredConstructor(DatabaseTableService.class)
+                                .newInstance(this.controller);
+
+                        // Set the foreign key value to the appropriate field
+                        Field foreignField = foreignClass.getDeclaredField(foreignKeyColumn);
+                        foreignField.setAccessible(true);
+                        foreignField.set(foreignRecordInstance, foreignKeyValue);
+                        // Fetch the full foreign record
+                        foreignRecordInstance.select();
+                        // If depth > 1, recursively deep fetch
+                        if (depth > 1) {
+                            foreignRecordInstance.deepFetch(depth - 1);
+                        }
+                        fetchedRecords.add(foreignRecordInstance);
+                    }
+                    // Assign fetched records to the designated field
+                    if (!assignTo.isEmpty()) {
+                        Field assignField = this.getClass().getDeclaredField(assignTo);
+                        assignField.setAccessible(true);
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
+            } else if (field.isAnnotationPresent(ForeignKey.class)) {
+                ForeignKey fkAnnotation = field.getAnnotation(ForeignKey.class);
+                Class<? extends DatabaseRecord> foreignClass = fkAnnotation.type();
+                String foreignKeyColumn = fkAnnotation.reference();
+                String assignTo = fkAnnotation.assignTo();
+
+                // Current field is expected to have the foreign key value
+                field.setAccessible(true);
+                try {
+                    Object foreignKeyValue = field.get(this);
+                    if (foreignKeyValue == null) {
+                        continue; // Skip if foreign key value is null
+                    }
+
+                    // Create an instance of the foreign record
+                    DatabaseRecord foreignRecordInstance = foreignClass.getDeclaredConstructor(DatabaseTableService.class)
+                            .newInstance(this.controller);
+
+                    // Set the foreign key value to the appropriate field
+                    Field foreignField = foreignClass.getDeclaredField(foreignKeyColumn);
+                    foreignField.setAccessible(true);
+                    foreignField.set(foreignRecordInstance, foreignKeyValue);
+                    // Fetch the full foreign record
+                    foreignRecordInstance.select();
+                    // If depth > 1, recursively deep fetch
+                    if (depth > 1) {
+                        foreignRecordInstance.deepFetch(depth - 1);
+                    }
+                    // Assign fetched record to the designated field
+                    if (!assignTo.isEmpty()) {
+                        Field assignField = this.getClass().getDeclaredField(assignTo);
+                        assignField.setAccessible(true);
+                        assignField.set(this, foreignRecordInstance);
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
     }
 
     public void deepFetch() {

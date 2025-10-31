@@ -18,4 +18,24 @@ public class RSCodableUtil {
         }
         return null;
     }
+
+    public static String mapJavaTypeToSQLType(Class<?> type) {
+        if (type == int.class || type == Integer.class || type == boolean.class || type == Boolean.class) {
+            return "INTEGER";
+        } else if (type == long.class || type == Long.class) {
+            return "BIGINT";
+        } else if (type == float.class || type == Float.class) {
+            return "FLOAT";
+        } else if (type == double.class || type == Double.class) {
+            return "DOUBLE";
+        } else if (type == String.class) {
+            return "TEXT";
+        } else if (type == byte[].class) {
+            return "BLOB";
+        } else if (java.util.List.class.isAssignableFrom(type) || java.util.Map.class.isAssignableFrom(type)) {
+            return "TEXT"; // Store lists and maps as JSON text
+        } else {
+            return "TEXT"; // Default to TEXT for other unknown types
+        }
+    }
 }
