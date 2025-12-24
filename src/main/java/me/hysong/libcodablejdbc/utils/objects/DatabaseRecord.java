@@ -241,6 +241,15 @@ public abstract class DatabaseRecord implements RSCodable {
     }
 
     public boolean buildTable() {
+        try {
+            return buildTable(false);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public boolean buildTable(boolean useThrow) throws SQLException {
         // Get @Database annotation
         if (!this.getClass().isAnnotationPresent(Database.class)) {
             throw new RuntimeException("Database is not configured using @Database(db=...) annotation.");
@@ -267,13 +276,16 @@ public abstract class DatabaseRecord implements RSCodable {
         }
 
         query += String.join(", ", columnDefs) + ");";
-        System.out.println("DEBUG: Statement = " + query);
+        System.out.println("DEBUG: Statement: \"" + query + "\"");
         try (Connection conn = controller.getConnection(dbName); Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(query);
             return true;
         } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
+            if (useThrow) {
+                throw e;
+            } else {
+                return false;
+            }
         }
     }
 
