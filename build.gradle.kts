@@ -20,6 +20,9 @@ dependencies {
     testAnnotationProcessor("org.projectlombok:lombok:1.18.40")
 
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
+
+    implementation(project(":lib:libcodablejson-derivative"))
+    implementation("com.google.code.gson:gson:2.12.1")
 }
 
 tasks.test {

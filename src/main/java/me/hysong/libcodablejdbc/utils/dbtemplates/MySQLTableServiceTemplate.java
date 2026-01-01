@@ -1,18 +1,25 @@
 package me.hysong.libcodablejdbc.utils.dbtemplates;
 
+import me.hysong.libcodablejdbc.Automatic;
+import me.hysong.libcodablejdbc.PseudoEnum;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
 import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
 import me.hysong.libcodablejdbc.utils.interfaces.ResultSetProcessor;
-import me.hysong.libcodablejdbc.utils.objects.DatabaseElement;
+import me.hysong.libcodablejdbc.utils.objects.DatabaseRecord;
+import me.hysong.libcodablejdbc.utils.objects.SearchExpression;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 /**
  * A template interface for SQLite database table services. It provides default
@@ -30,7 +37,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws SQLException                  If a database access error occurs.
      * @throws IOException                   If an I/O error occurs.
      */
-    default LinkedHashMap<Object, DatabaseElement> selectAll(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default LinkedHashMap<Object, DatabaseRecord> selectAll(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         String sql = "SELECT * FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;";
         Object[] params = new Object[]{object.getPrimaryKeyValue()};
         return executeQuery(object.getDatabase(), sql, params, rs -> getObjectDatabaseElementLinkedHashMap(rs, object));
@@ -46,12 +53,12 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws InitializationViolationException If the object cannot be initialized.
      * @throws JDBCReflectionGeneralException   If a reflection error occurs during object instantiation.
      */
-    private LinkedHashMap<Object, DatabaseElement> getObjectDatabaseElementLinkedHashMap(ResultSet rs, DatabaseElement object) throws SQLException, InitializationViolationException, JDBCReflectionGeneralException {
-        LinkedHashMap<Object, DatabaseElement> result = new LinkedHashMap<>();
+    private LinkedHashMap<Object, DatabaseRecord> getObjectDatabaseElementLinkedHashMap(ResultSet rs, DatabaseRecord object) throws SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+        LinkedHashMap<Object, DatabaseRecord> result = new LinkedHashMap<>();
         Class<?> objectClass = object.getClass();
         while (rs.next()) {
             try {
-                DatabaseElement newInstance = (DatabaseElement) objectClass.getDeclaredConstructor().newInstance();
+                DatabaseRecord newInstance = (DatabaseRecord) objectClass.getDeclaredConstructor().newInstance();
                 newInstance.objectifyCurrentRow(rs);
                 result.put(newInstance.getPrimaryKeyValue(), newInstance);
             } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
@@ -75,7 +82,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
     default <T> T executeQuery(String database, String sql, Object[] params, ResultSetProcessor<T> resultSetProcessor) throws SQLException, JDBCReflectionGeneralException, InitializationViolationException {
         Connection connection = getConnection(database);
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-            DatabaseElement.setObjects(preparedStatement, params);
+            DatabaseRecord.setObjects(preparedStatement, params);
             try (ResultSet rs = preparedStatement.executeQuery()) {
                 return resultSetProcessor.process(rs);
             }
@@ -94,7 +101,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
     default int executeUpdate(String database, String sql, Object[] params) throws SQLException {
         Connection connection = getConnection(database);
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-            DatabaseElement.setObjects(preparedStatement, params);
+            DatabaseRecord.setObjects(preparedStatement, params);
             return preparedStatement.executeUpdate();
         }
     }
@@ -113,10 +120,14 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws InitializationViolationException If an object cannot be initialized.
      * @throws JDBCReflectionGeneralException   If a reflection error occurs.
      */
-    default LinkedHashMap<Object, DatabaseElement> selectBy(DatabaseElement blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+    default LinkedHashMap<Object, DatabaseRecord> selectBy(DatabaseRecord blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
         StringBuilder sb = new StringBuilder("SELECT * FROM ");
         sb.append(blueprint.getTable()).append(" WHERE ");
         for (int i = 0; i < columnNames.length; i++) {
+            if (!blueprint.getColumnNames().contains(columnNames[i])) {
+                throw new IllegalArgumentException("Column " + columnNames[i] + " not found in table " + blueprint.getTable());
+            }
+
             sb.append(columnNames[i]).append(" = ?");
             if (i < columnNames.length - 1) {
                 sb.append(" AND ");
@@ -138,6 +149,63 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         return executeQuery(blueprint.getDatabase(), sb.toString(), queryParams, rs -> getObjectDatabaseElementLinkedHashMap(rs, blueprint));
     }
 
+    default LinkedHashMap<Object, DatabaseRecord> searchBy(DatabaseRecord blueprint, int offset, int limit, SearchExpression[] expressions) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+        StringBuilder sb = new StringBuilder("SELECT * FROM ");
+        sb.append(blueprint.getTable()).append(" WHERE ");
+        for (int i = 0; i < expressions.length; i++) {
+
+            if (!blueprint.getColumnNames().contains(expressions[i].getColumn())) {
+                throw new IllegalArgumentException("Column " + expressions[i].getColumn() + " not found in table " + blueprint.getTable());
+            }
+
+            sb.append(expressions[i].getColumn());
+
+            if (expressions[i].isStartsWith() || expressions[i].isEndsWith()) {
+                sb.append(" LIKE ");
+            } else {
+                if (expressions[i].isNegate()) {
+                    sb.append(" != ");
+                } else {
+                    sb.append(" = ");
+                }
+            }
+
+            if (expressions[i].isEndsWith()) {
+                sb.append("%");
+            }
+            sb.append("?");
+            if (expressions[i].isStartsWith()) {
+                sb.append("%");
+            }
+
+            if (i < expressions.length - 1) {
+                if (expressions[i + 1].isAnd()) {
+                    sb.append(" AND ");
+                } else if (expressions[i + 1].isOr()) {
+                    sb.append(" OR ");
+                } else {
+                    throw new SQLException("Chained SearchExpression must have any of AND or OR set to true using .or() or .and() function.");
+                }
+            }
+        }
+
+        if (limit > 0) sb.append(" LIMIT ?");
+        if (offset > 0) sb.append(" OFFSET ?");
+        sb.append(";");
+
+        // The 'values' array might need to be expanded to include limit and offset
+        Object[] queryParams = new Object[expressions.length + (limit > 0 ? 1 : 0) + (offset > 0 ? 1 : 0)];
+        for (int i = 0; i < expressions.length; i++) {
+            queryParams[i] = expressions[i].getValue();
+        }
+        int currentIndex = expressions.length;
+        if (limit > 0) queryParams[currentIndex++] = limit;
+        if (offset > 0) queryParams[currentIndex] = offset;
+
+
+        return executeQuery(blueprint.getDatabase(), sb.toString(), queryParams, rs -> getObjectDatabaseElementLinkedHashMap(rs, blueprint));
+    }
+
     /**
      * Updates an existing record in the database.
      *
@@ -148,7 +216,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws SQLException                  If a database access error occurs.
      * @throws IOException                   If an I/O error occurs.
      */
-    default int update(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default int update(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("UPDATE ").append(object.getTable()).append(" SET ");
 
@@ -162,6 +230,19 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         Object[] params = new Object[values.size() + 1];
         int i = 0;
         for (String key : values.keySet()) {
+            try {
+                if (object.getClass().getDeclaredField(key).isAnnotationPresent(PseudoEnum.class)) {
+                    PseudoEnum enumValue = object.getClass().getDeclaredField(key).getAnnotation(PseudoEnum.class);
+                    if (!Arrays.asList(enumValue.accepts()).contains((String) values.get(key))) {
+                        throw new RuntimeException("Pseudo enum does not accept value: " + values.get(key));
+                    }
+                    if (!enumValue.nullable() && values.get(key) == null) {
+                        throw new RuntimeException("Pseudo enum does not allow null but got null for: " + key);
+                    }
+                }
+            } catch (NoSuchFieldException | SecurityException e) {
+                e.printStackTrace();
+            }
             if (i > 0) sb.append(", ");
             sb.append(key).append(" = ?");
             params[i++] = values.get(key);
@@ -183,7 +264,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws SQLException                  If a database access error occurs.
      * @throws IOException                   If an I/O error occurs.
      */
-    default int insert(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default int insert(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         StringBuilder columnNames = new StringBuilder();
         StringBuilder valuePlaceholders = new StringBuilder();
 
@@ -197,6 +278,24 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         Object[] paramValues = new Object[values.size()];
         int i = 0;
         for (String key : values.keySet()) {
+            try {
+                Field annotationChk = object.getClass().getDeclaredField(key);
+                if (annotationChk.isAnnotationPresent(Automatic.class)) {
+                    continue;
+                }
+                if (object.getClass().getDeclaredField(key).isAnnotationPresent(PseudoEnum.class)) {
+                    PseudoEnum enumValue = object.getClass().getDeclaredField(key).getAnnotation(PseudoEnum.class);
+                    if (!Arrays.asList(enumValue.accepts()).contains((String) values.get(key))) {
+                        throw new RuntimeException("Pseudo enum does not accept value: " + values.get(key));
+                    }
+                    if (!enumValue.nullable() && values.get(key) == null) {
+                        throw new RuntimeException("Pseudo enum does not allow null but got null for: " + key);
+                    }
+                }
+            } catch (NoSuchFieldException | SecurityException e) {
+                throw new RuntimeException(e);
+            }
+
             if (i > 0) {
                 columnNames.append(", ");
                 valuePlaceholders.append(", ");
@@ -221,7 +320,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws SQLException                  If a database access error occurs.
      * @throws IOException                   If an I/O error occurs.
      */
-    default int delete(DatabaseElement object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default int delete(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         String sql = "DELETE FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;";
         Object[] params = new Object[]{object.getPrimaryKeyValue()};
         return executeUpdate(object.getDatabase(), sql, params);

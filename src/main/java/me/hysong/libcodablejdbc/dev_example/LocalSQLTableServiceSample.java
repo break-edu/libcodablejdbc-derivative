@@ -1,12 +1,8 @@
 package me.hysong.libcodablejdbc.dev_example;
 
 import me.hysong.libcodablejdbc.utils.dbtemplates.MySQLTableServiceTemplate;
-import me.hysong.libcodablejdbc.utils.interfaces.DatabaseTableService;
-import me.hysong.libcodablejdbc.utils.objects.DatabaseElement;
 
-import java.io.IOException;
 import java.sql.*;
-import java.util.Map;
 
 public class LocalSQLTableServiceSample implements MySQLTableServiceTemplate {
 
