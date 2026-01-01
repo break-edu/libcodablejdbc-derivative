@@ -11,7 +11,7 @@ import me.hysong.libcodablejdbc.utils.objects.DatabaseRecord;
 @Record // This applies @Column at all fields with its name. Name mapping will prioritize @Column(mapTo=xxx).
 @Database(db="unitable", table="users")
 @PrimaryKey(column="email") // Explicitly specify
-public class User extends DatabaseRecord {
+public class ExampleUser extends DatabaseRecord {
 
     /*
     Database example
@@ -27,7 +27,7 @@ public class User extends DatabaseRecord {
     private String password = "";
     private int age = 23;
 
-    public User() {
+    public ExampleUser() {
         super(new LocalSQLTableServiceSample()); // .update() .select() etc... functions will use this controller
     }
 
@@ -37,7 +37,7 @@ public class User extends DatabaseRecord {
 
     public static void main(String[] args) throws Exception {
         String email = "admin@default.com";
-        User o = new User();
+        ExampleUser o = new ExampleUser();
         o.setPrimaryKeyValue(email);   // .select() will use PK to search
         o.select();                    // Load result to object
         System.out.println(o);
