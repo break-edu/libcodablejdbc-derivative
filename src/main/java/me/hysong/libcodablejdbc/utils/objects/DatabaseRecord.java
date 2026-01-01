@@ -38,6 +38,23 @@ public abstract class DatabaseRecord implements RSCodable {
         return controller.delete(this);
     }
 
+    public LinkedHashMap <Object, DatabaseRecord> selectBy(String[] columnNames, int offset, int limit) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+        // Get values for the specified column names in current object
+        LinkedHashMap<String, Object> allValues;
+        try {
+            allValues = getValues();
+        } catch (IllegalAccessException e) {
+            throw new JDBCReflectionGeneralException(e);
+        }
+
+        Object[] values = new Object[columnNames.length];
+        for (int i = 0; i < columnNames.length; i++) {
+            values[i] = allValues.get(columnNames[i]);
+        }
+
+        return controller.selectBy(this, offset, limit, columnNames, values);
+    }
+
     public LinkedHashMap <Object, DatabaseRecord> selectAll() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         return controller.selectAll(this);
     }
@@ -272,11 +289,13 @@ public abstract class DatabaseRecord implements RSCodable {
                     columnDef += " PRIMARY KEY";
                 }
             }
+            if (field.isAnnotationPresent(Automatic.class)) {
+                columnDef += " AUTO_INCREMENT";
+            }
             columnDefs.add(columnDef);
         }
 
         query += String.join(", ", columnDefs) + ");";
-        System.out.println("DEBUG: Statement: \"" + query + "\"");
         try (Connection conn = controller.getConnection(dbName); Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(query);
             return true;
