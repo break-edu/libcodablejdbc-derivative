@@ -38,7 +38,29 @@ public abstract class DatabaseRecord implements RSCodable {
         return controller.delete(this);
     }
 
-    public LinkedHashMap <Object, DatabaseRecord> selectBy(String[] columnNames, int offset, int limit) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public LinkedHashMap<Object, DatabaseRecord> directSQL(String sql, Object[] params) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+        return controller.executeQuery(
+                getDatabase(),
+                sql,
+                params,
+                (rs) -> {
+                    LinkedHashMap<Object, DatabaseRecord> result = new LinkedHashMap<>();
+                    Class<?> objectClass = this.getClass();
+                    while (rs.next()) {
+                        try {
+                            DatabaseRecord newInstance = (DatabaseRecord) objectClass.getDeclaredConstructor().newInstance();
+                            newInstance.objectifyCurrentRow(rs);
+                            result.put(newInstance.getPrimaryKeyValue(), newInstance);
+                        } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
+                            throw new JDBCReflectionGeneralException("Expected a public, no-parameter constructor for class " + objectClass.getName(), e);
+                        }
+                    }
+                    return result;
+                }
+        );
+    }
+
+    public LinkedHashMap<Object, DatabaseRecord> selectBy(String[] columnNames, int offset, int limit) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         // Get values for the specified column names in current object
         LinkedHashMap<String, Object> allValues;
         try {
@@ -53,6 +75,10 @@ public abstract class DatabaseRecord implements RSCodable {
         }
 
         return controller.selectBy(this, offset, limit, columnNames, values);
+    }
+
+    public LinkedHashMap<Object, DatabaseRecord> selectBy(String[] columnNames) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+        return selectBy(columnNames, 0, -1);
     }
 
     public LinkedHashMap <Object, DatabaseRecord> selectAll() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
