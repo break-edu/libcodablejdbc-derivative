@@ -17,10 +17,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.*;
 
 /**
  * A template interface for SQLite database table services. It provides default
@@ -214,14 +211,33 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         if (offset > 0) sb.append(" OFFSET ?");
         sb.append(";");
 
-        // The 'values' array might need to be expanded to include limit and offset
-        Object[] queryParams = new Object[expressions.length + (limit > 0 ? 1 : 0) + (offset > 0 ? 1 : 0)];
-        for (int i = 0; i < expressions.length; i++) {
-            queryParams[i] = expressions[i].getValue();
+//        // The 'values' array might need to be expanded to include limit and offset
+//        Object[] queryParams = new Object[expressions.length + (limit > 0 ? 1 : 0) + (offset > 0 ? 1 : 0)];
+//        for (int i = 0; i < expressions.length; i++) {
+//            queryParams[i] = expressions[i].getValue();
+//        }
+//        int currentIndex = expressions.length;
+//        if (limit > 0) queryParams[currentIndex++] = limit;
+//        if (offset > 0) queryParams[currentIndex] = offset;
+        ArrayList<Object> paramList = new ArrayList<>();
+
+        for (SearchExpression exp : expressions) {
+            // If it is an IN clause, add each element individually
+            if (exp.getIn() != null && exp.getIn().length > 0) {
+                Collections.addAll(paramList, exp.getIn());
+            }
+            // Otherwise, add the single value
+            else {
+                paramList.add(exp.getValue());
+            }
         }
-        int currentIndex = expressions.length;
-        if (limit > 0) queryParams[currentIndex++] = limit;
-        if (offset > 0) queryParams[currentIndex] = offset;
+
+        // Add Limit and Offset if they exist
+        if (limit > 0) paramList.add(limit);
+        if (offset > 0) paramList.add(offset);
+
+        // Convert back to Object[] for executeQuery
+        Object[] queryParams = paramList.toArray();
 
         return executeQuery(blueprint.getDatabase(), sb.toString(), queryParams, rs -> getObjectDatabaseElementLinkedHashMap(privilege, rs, blueprint));
     }
