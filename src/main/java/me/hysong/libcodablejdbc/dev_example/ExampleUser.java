@@ -39,7 +39,7 @@ public class ExampleUser extends DatabaseRecord {
         String email = "admin@default.com";
         ExampleUser o = new ExampleUser();
         o.setPrimaryKeyValue(email);   // .select() will use PK to search
-        o.select();                    // Load result to object
+        o.select(0);                    // Load result to object
         System.out.println(o);
     }
 }

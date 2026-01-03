@@ -1,6 +1,7 @@
 package me.hysong.libcodablejdbc.utils.dbtemplates;
 
 import me.hysong.libcodablejdbc.Automatic;
+import me.hysong.libcodablejdbc.Column;
 import me.hysong.libcodablejdbc.PseudoEnum;
 import me.hysong.libcodablejdbc.utils.exceptions.InitializationViolationException;
 import me.hysong.libcodablejdbc.utils.exceptions.JDBCReflectionGeneralException;
@@ -37,10 +38,10 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws SQLException                  If a database access error occurs.
      * @throws IOException                   If an I/O error occurs.
      */
-    default LinkedHashMap<Object, DatabaseRecord> selectAll(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default LinkedHashMap<Object, DatabaseRecord> selectAll(int privilege, DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         String sql = "SELECT * FROM " + object.getTable() + " WHERE " + object.getPrimaryKeyColumnName() + " = ?;";
         Object[] params = new Object[]{object.getPrimaryKeyValue()};
-        return executeQuery(object.getDatabase(), sql, params, rs -> getObjectDatabaseElementLinkedHashMap(rs, object));
+        return executeQuery(object.getDatabase(), sql, params, rs -> getObjectDatabaseElementLinkedHashMap(privilege, rs, object));
     }
 
     /**
@@ -53,13 +54,13 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws InitializationViolationException If the object cannot be initialized.
      * @throws JDBCReflectionGeneralException   If a reflection error occurs during object instantiation.
      */
-    private LinkedHashMap<Object, DatabaseRecord> getObjectDatabaseElementLinkedHashMap(ResultSet rs, DatabaseRecord object) throws SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+    private LinkedHashMap<Object, DatabaseRecord> getObjectDatabaseElementLinkedHashMap(int privilege, ResultSet rs, DatabaseRecord object) throws SQLException, InitializationViolationException, JDBCReflectionGeneralException {
         LinkedHashMap<Object, DatabaseRecord> result = new LinkedHashMap<>();
         Class<?> objectClass = object.getClass();
         while (rs.next()) {
             try {
                 DatabaseRecord newInstance = (DatabaseRecord) objectClass.getDeclaredConstructor().newInstance();
-                newInstance.objectifyCurrentRow(rs);
+                newInstance.objectifyCurrentRow(privilege, rs);
                 result.put(newInstance.getPrimaryKeyValue(), newInstance);
             } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
                 throw new JDBCReflectionGeneralException("Expected a public, no-parameter constructor for class " + objectClass.getName(), e);
@@ -120,11 +121,11 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws InitializationViolationException If an object cannot be initialized.
      * @throws JDBCReflectionGeneralException   If a reflection error occurs.
      */
-    default LinkedHashMap<Object, DatabaseRecord> selectBy(DatabaseRecord blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+    default LinkedHashMap<Object, DatabaseRecord> selectBy(int privilege, DatabaseRecord blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
         StringBuilder sb = new StringBuilder("SELECT * FROM ");
         sb.append(blueprint.getTable()).append(" WHERE ");
         for (int i = 0; i < columnNames.length; i++) {
-            if (!blueprint.getColumnNames().contains(columnNames[i])) {
+            if (!blueprint.getColumnNames(privilege).contains(columnNames[i])) {
                 throw new IllegalArgumentException("Column " + columnNames[i] + " not found in table " + blueprint.getTable());
             }
 
@@ -146,15 +147,19 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         if (offset > 0) queryParams[currentIndex] = offset;
 
 
-        return executeQuery(blueprint.getDatabase(), sb.toString(), queryParams, rs -> getObjectDatabaseElementLinkedHashMap(rs, blueprint));
+        return executeQuery(blueprint.getDatabase(), sb.toString(), queryParams, rs -> getObjectDatabaseElementLinkedHashMap(privilege, rs, blueprint));
     }
 
-    default LinkedHashMap<Object, DatabaseRecord> searchBy(DatabaseRecord blueprint, int offset, int limit, SearchExpression[] expressions) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+    default LinkedHashMap<Object, DatabaseRecord> selectBy(DatabaseRecord blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+        return selectBy(0, blueprint, offset, limit, columnNames, values);
+    }
+
+    default LinkedHashMap<Object, DatabaseRecord> searchBy(int privilege, DatabaseRecord blueprint, int offset, int limit, SearchExpression[] expressions) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
         StringBuilder sb = new StringBuilder("SELECT * FROM ");
         sb.append(blueprint.getTable()).append(" WHERE ");
         for (int i = 0; i < expressions.length; i++) {
 
-            if (!blueprint.getColumnNames().contains(expressions[i].getColumn())) {
+            if (!blueprint.getColumnNames(privilege).contains(expressions[i].getColumn())) {
                 throw new IllegalArgumentException("Column " + expressions[i].getColumn() + " not found in table " + blueprint.getTable());
             }
 
@@ -202,8 +207,11 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
         if (limit > 0) queryParams[currentIndex++] = limit;
         if (offset > 0) queryParams[currentIndex] = offset;
 
+        return executeQuery(blueprint.getDatabase(), sb.toString(), queryParams, rs -> getObjectDatabaseElementLinkedHashMap(privilege, rs, blueprint));
+    }
 
-        return executeQuery(blueprint.getDatabase(), sb.toString(), queryParams, rs -> getObjectDatabaseElementLinkedHashMap(rs, blueprint));
+    default LinkedHashMap<Object, DatabaseRecord> searchBy(DatabaseRecord blueprint, int offset, int limit, SearchExpression[] expressions) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException {
+        return searchBy(0, blueprint, offset, limit, expressions);
     }
 
     /**
@@ -216,21 +224,29 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
      * @throws SQLException                  If a database access error occurs.
      * @throws IOException                   If an I/O error occurs.
      */
-    default int update(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
+    default int update(int privilege, DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("UPDATE ").append(object.getTable()).append(" SET ");
 
         LinkedHashMap<String, Object> values;
         try {
-            values = object.getValues();
+            values = object.getValues(Integer.MAX_VALUE);
         } catch (IllegalAccessException e) {
             throw new JDBCReflectionGeneralException(e);
         }
 
-        Object[] params = new Object[values.size() + 1];
+//        Object[] params = new Object[values.size() + 1];
+        ArrayList<Object> params = new ArrayList<>();
         int i = 0;
         for (String key : values.keySet()) {
             try {
+                // 권한 체크
+                Field annotationChk = object.getClass().getDeclaredField(key);
+                if (object.mayAccessByFieldSecurityPolicy(privilege, true, annotationChk)) {
+                    continue;
+                }
+
+                // PseudoEnum 체크
                 if (object.getClass().getDeclaredField(key).isAnnotationPresent(PseudoEnum.class)) {
                     PseudoEnum enumValue = object.getClass().getDeclaredField(key).getAnnotation(PseudoEnum.class);
                     if (!Arrays.asList(enumValue.accepts()).contains((String) values.get(key))) {
@@ -245,13 +261,16 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
             }
             if (i > 0) sb.append(", ");
             sb.append(key).append(" = ?");
-            params[i++] = values.get(key);
+//            params[i++] = values.get(key);
+            params.add(values.get(key));
+            i++;
         }
 
         sb.append(" WHERE ").append(object.getPrimaryKeyColumnName()).append(" = ?;");
-        params[i] = object.getPrimaryKeyValue();
+//        params[i] = object.getPrimaryKeyValue();
+        params.add(object.getPrimaryKeyValue());
 
-        return executeUpdate(object.getDatabase(), sb.toString(), params);
+        return executeUpdate(object.getDatabase(), sb.toString(), params.toArray());
     }
 
     /**
@@ -270,7 +289,7 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
 
         LinkedHashMap<String, Object> values;
         try {
-            values = object.getValues();
+            values = object.getValues(Integer.MAX_VALUE);
         } catch (IllegalAccessException e) {
             throw new JDBCReflectionGeneralException(e);
         }
