@@ -11,6 +11,7 @@ public class SearchExpression {
     private boolean negate = false;
     private boolean startsWith = false;
     private boolean endsWith = false;
+    private Object[] in;
 
     public SearchExpression column(String column) {
         this.column = column;
@@ -60,6 +61,11 @@ public class SearchExpression {
     public SearchExpression and() {
         this.and = true;
         this.or = false;
+        return this;
+    }
+
+    public SearchExpression in(Object[] values) {
+        this.in = values;
         return this;
     }
 }

@@ -165,22 +165,38 @@ public interface MySQLTableServiceTemplate extends DatabaseTableService {
 
             sb.append(expressions[i].getColumn());
 
-            if (expressions[i].isStartsWith() || expressions[i].isEndsWith()) {
-                sb.append(" LIKE ");
-            } else {
-                if (expressions[i].isNegate()) {
-                    sb.append(" != ");
-                } else {
-                    sb.append(" = ");
+            // IN 절 처리
+            if (expressions[i].getIn().length > 0) {
+                sb.append(expressions[i].isNegate() ? " NOT IN (" : " IN (");
+                for (int j = 0; j < expressions[i].getIn().length; j++) {
+                    sb.append("?");
+                    if (j < expressions[i].getIn().length - 1) {
+                        sb.append(", ");
+                    }
                 }
-            }
+                sb.append(")");
 
-            if (expressions[i].isEndsWith()) {
-                sb.append("%");
-            }
-            sb.append("?");
-            if (expressions[i].isStartsWith()) {
-                sb.append("%");
+            // IN 이 아닌 경우 처리
+            // ex: =, !=, LIKE 등
+            } else {
+
+                if (expressions[i].isStartsWith() || expressions[i].isEndsWith()) {
+                    sb.append(" LIKE ");
+                } else {
+                    if (expressions[i].isNegate()) {
+                        sb.append(" != ");
+                    } else {
+                        sb.append(" = ");
+                    }
+                }
+
+                if (expressions[i].isEndsWith()) {
+                    sb.append("%");
+                }
+                sb.append("?");
+                if (expressions[i].isStartsWith()) {
+                    sb.append("%");
+                }
             }
 
             if (i < expressions.length - 1) {
