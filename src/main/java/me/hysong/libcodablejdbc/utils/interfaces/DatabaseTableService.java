@@ -18,13 +18,13 @@ public interface DatabaseTableService {
 
     int executeUpdate(String database, String sql, Object[] params) throws SQLException, IOException;
 
-    LinkedHashMap<Object, DatabaseRecord> selectAll(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException;
+    LinkedHashMap<Object, DatabaseRecord> selectAll(int privilege, DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException;
 
-    LinkedHashMap<Object, DatabaseRecord> selectBy(DatabaseRecord blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException;
+    LinkedHashMap<Object, DatabaseRecord> selectBy(int privilege, DatabaseRecord blueprint, int offset, int limit, String[] columnNames, Object[] values) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException;
 
-    LinkedHashMap<Object, DatabaseRecord> searchBy(DatabaseRecord blueprint, int offset, int limit, SearchExpression[] expressions) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException;
+    LinkedHashMap<Object, DatabaseRecord> searchBy(int privilege, DatabaseRecord blueprint, int offset, int limit, SearchExpression[] expressions) throws IOException, SQLException, InitializationViolationException, JDBCReflectionGeneralException;
 
-    int update(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException;
+    int update(int privilege, DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException;
 
     int insert(DatabaseRecord object) throws InitializationViolationException, JDBCReflectionGeneralException, SQLException, IOException;
 

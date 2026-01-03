@@ -26,8 +26,8 @@ public abstract class DatabaseRecord implements RSCodable {
         this.controller = controller;
     }
 
-    public int update() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
-        return controller.update(this);
+    public int update(int privilege) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+        return controller.update(privilege, this);
     }
 
     public int insert() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
@@ -49,7 +49,7 @@ public abstract class DatabaseRecord implements RSCodable {
                     while (rs.next()) {
                         try {
                             DatabaseRecord newInstance = (DatabaseRecord) objectClass.getDeclaredConstructor().newInstance();
-                            newInstance.objectifyCurrentRow(rs);
+                            newInstance.objectifyCurrentRow(Integer.MAX_VALUE, rs);
                             result.put(newInstance.getPrimaryKeyValue(), newInstance);
                         } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
                             throw new JDBCReflectionGeneralException("Expected a public, no-parameter constructor for class " + objectClass.getName(), e);
@@ -60,11 +60,11 @@ public abstract class DatabaseRecord implements RSCodable {
         );
     }
 
-    public LinkedHashMap<Object, DatabaseRecord> selectBy(String[] columnNames, int offset, int limit) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public LinkedHashMap<Object, DatabaseRecord> selectBy(int privilege, String[] columnNames, int offset, int limit) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         // Get values for the specified column names in current object
         LinkedHashMap<String, Object> allValues;
         try {
-            allValues = getValues();
+            allValues = getValues(privilege);
         } catch (IllegalAccessException e) {
             throw new JDBCReflectionGeneralException(e);
         }
@@ -74,19 +74,19 @@ public abstract class DatabaseRecord implements RSCodable {
             values[i] = allValues.get(columnNames[i]);
         }
 
-        return controller.selectBy(this, offset, limit, columnNames, values);
+        return controller.selectBy(privilege, this, offset, limit, columnNames, values);
     }
 
-    public LinkedHashMap<Object, DatabaseRecord> selectBy(String[] columnNames) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
-        return selectBy(columnNames, 0, -1);
+    public LinkedHashMap<Object, DatabaseRecord> selectBy(int privilege, String[] columnNames) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+        return selectBy(privilege, columnNames, 0, -1);
     }
 
-    public LinkedHashMap <Object, DatabaseRecord> selectAll() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
-        return controller.selectAll(this);
+    public LinkedHashMap <Object, DatabaseRecord> selectAll(int privilege) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+        return controller.selectAll(privilege, this);
     }
 
-    public void select() throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException, IllegalAccessException {
-        LinkedHashMap<Object, DatabaseRecord> selected = selectAll();
+    public void select(int privilege) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException, IllegalAccessException {
+        LinkedHashMap<Object, DatabaseRecord> selected = selectAll(privilege);
         if (selected == null || selected.isEmpty()) {
             return;
         }
@@ -156,13 +156,93 @@ public abstract class DatabaseRecord implements RSCodable {
         }
     }
 
+    public boolean mayAccessByFieldSecurityPolicy(int privilegeLevel, boolean writeMode, Field field) {
+
+        // 권한 체크 우선순위:
+        // 1. allowedAccessLevels 속성
+        // 2. minAccessLevel 속성
+
+        // 만약 Integer.MAX_VALUE 가 들어온다면 무조건 허용
+        if (privilegeLevel == Integer.MAX_VALUE) {
+            return true;
+        }
+
+        // Column 어노테이션이 없다면 무조건 허용
+        if (!field.isAnnotationPresent(Column.class)) {
+            return true;
+        } else {
+            Column columnAnnotation = field.getAnnotation(Column.class);
+
+            // 권한 레벨 검사
+            int[] allowedAccessLevels = columnAnnotation.allowedAccessLevels();
+            int minAccessLevel = columnAnnotation.minAccessLevel();
+
+            // 쓰기/읽기 모드에 따른 별도 권한 설정이 있다면 그것을 우선
+            if (writeMode) {
+
+                int[] wAllowedAccessLevels = columnAnnotation.writeAllowedAccessLevels();
+                int wMinAccessLevel = columnAnnotation.writeMinAccessLevel();
+
+                // 쓰기 권한이 별도로 설정되어 있다면 그것을 우선
+                if (wAllowedAccessLevels.length > 0) {
+                    allowedAccessLevels = wAllowedAccessLevels;
+                }
+                if (wMinAccessLevel > 0) {
+                    minAccessLevel = wMinAccessLevel;
+                }
+
+            } else {
+
+                int[] rAllowedAccessLevels = columnAnnotation.readAllowedAccessLevels();
+                int rMinAccessLevel = columnAnnotation.readMinAccessLevel();
+
+                // 읽기 권한이 별도로 설정되어 있다면 그것을 우선
+                if (rAllowedAccessLevels.length > 0) {
+                    allowedAccessLevels = rAllowedAccessLevels;
+                }
+                if (rMinAccessLevel > 0) {
+                    minAccessLevel = rMinAccessLevel;
+                }
+            }
+
+            // allowedAccessLevels 가 설정되어 있다면 그것이 우선
+            if (allowedAccessLevels.length > 0) {
+                boolean isAllowed = false;
+                for (int level : allowedAccessLevels) {
+                    if (privilegeLevel == level) {
+                        isAllowed = true;
+                        break;
+                    }
+                }
+                return isAllowed;
+
+            // 그렇지 않다면 minAccessLevel 검사
+            } else return privilegeLevel >= minAccessLevel;
+        }
+    }
+
     public LinkedHashMap<String, String> getColumns() {
+        return getColumns(0);
+    }
+
+    public LinkedHashMap<String, String> getColumns(int privilegeLevel) {
         LinkedHashMap<String, String> columns = new LinkedHashMap<>();
         for (Field field : this.getClass().getDeclaredFields()) {
+
+            // Mapping element 가 아니라면 무시
             if (!RSCodableUtil.isMarkedMappingElement(field)) {
                 continue;
             }
+
+            // 접근 가능하도록 설정
             field.setAccessible(true);
+
+            // 권한 체크
+            if (!mayAccessByFieldSecurityPolicy(privilegeLevel, false, field)) {
+                continue;
+            }
+
+            // CompositionObject 타입이라면 재귀적으로 분해
             if (field.getType().isAssignableFrom(CompositionObject.class)) {
                 CompositionObject compositionObject;
                 try {
@@ -183,12 +263,27 @@ public abstract class DatabaseRecord implements RSCodable {
     }
 
     public ArrayList<String> getColumnNames() {
+        return getColumnNames(0);
+    }
+
+    public ArrayList<String> getColumnNames(int privilegeLevel) {
         ArrayList<String> columnNames = new ArrayList<>();
         for (Field field : this.getClass().getDeclaredFields()) {
+
+            // Mapping element 가 아니라면 무시
             if (!RSCodableUtil.isMarkedMappingElement(field)) {
                 continue;
             }
+
+            // 접근 가능하도록 설정
             field.setAccessible(true);
+
+            // 권한 검사
+            if (!mayAccessByFieldSecurityPolicy(privilegeLevel, false, field)) {
+                continue;
+            }
+
+            // CompositionObject 타입이라면 재귀적으로 분해
             if (field.getType().isAssignableFrom(CompositionObject.class)) {
                 CompositionObject compositionObject;
                 try {
@@ -207,13 +302,27 @@ public abstract class DatabaseRecord implements RSCodable {
     }
 
     public LinkedHashMap<String, Object> getValues() throws IllegalAccessException {
+        return getValues(0);
+    }
+
+    public LinkedHashMap<String, Object> getValues(int privilegeLevel) throws IllegalAccessException {
         LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         for (Field field : this.getClass().getDeclaredFields()) {
+
+            // Mapping element 가 아니라면 무시
             if (!RSCodableUtil.isMarkedMappingElement(field)) {
                 continue;
             }
 
+            // 접근 가능하도록 설정
             field.setAccessible(true);
+
+            // 권한 검사
+            if (!mayAccessByFieldSecurityPolicy(privilegeLevel, false, field)) {
+                continue;
+            }
+
+            // CompositionObject 타입이라면 재귀적으로 분해
             if (field.getType().isAssignableFrom(CompositionObject.class)) {
                 CompositionObject compositionObject = (CompositionObject) field.get(this);
                 compositionObject.setPrefix(field.getName());
@@ -334,7 +443,7 @@ public abstract class DatabaseRecord implements RSCodable {
         }
     }
 
-    public void deepFetch(int depth) {
+    public void deepFetch(int privilege, int depth) {
          // Iterate through fields with @ForeignKey or @ForeignKeyList annotation
         for (Field field : this.getClass().getDeclaredFields()) {
             if (field.isAnnotationPresent(ForeignKeyList.class)) {
@@ -364,10 +473,10 @@ public abstract class DatabaseRecord implements RSCodable {
                         foreignField.setAccessible(true);
                         foreignField.set(foreignRecordInstance, foreignKeyValue);
                         // Fetch the full foreign record
-                        foreignRecordInstance.select();
+                        foreignRecordInstance.select(privilege);
                         // If depth > 1, recursively deep fetch
                         if (depth > 1) {
-                            foreignRecordInstance.deepFetch(depth - 1);
+                            foreignRecordInstance.deepFetch(privilege, depth - 1);
                         }
                         fetchedRecords.add(foreignRecordInstance);
                     }
@@ -403,10 +512,10 @@ public abstract class DatabaseRecord implements RSCodable {
                     foreignField.setAccessible(true);
                     foreignField.set(foreignRecordInstance, foreignKeyValue);
                     // Fetch the full foreign record
-                    foreignRecordInstance.select();
+                    foreignRecordInstance.select(privilege);
                     // If depth > 1, recursively deep fetch
                     if (depth > 1) {
-                        foreignRecordInstance.deepFetch(depth - 1);
+                        foreignRecordInstance.deepFetch(privilege, depth - 1);
                     }
                     // Assign fetched record to the designated field
                     if (!assignTo.isEmpty()) {
@@ -421,8 +530,8 @@ public abstract class DatabaseRecord implements RSCodable {
         }
     }
 
-    public void deepFetch() {
-        deepFetch(1);
+    public void deepFetch(int privilege) {
+        deepFetch(privilege, 1);
     }
 
 }

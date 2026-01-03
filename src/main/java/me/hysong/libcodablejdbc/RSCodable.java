@@ -21,7 +21,7 @@ import java.util.*;
 
 public interface RSCodable {
 
-    default void objectifyCurrentRow(ResultSet rs) {
+    default void objectifyCurrentRow(int privilege, ResultSet rs) {
         Field[] fields = this.getClass().getDeclaredFields();
 
         for (Field field : fields) {
@@ -333,7 +333,7 @@ public interface RSCodable {
 
                             // Execute search
                             DatabaseRecord referencedRecord = fk.type().getDeclaredConstructor(DatabaseTableService.class).newInstance(((DatabaseRecord) this).getController());
-                            LinkedHashMap<Object, DatabaseRecord> result = ((DatabaseRecord) this).getController().searchBy(referencedRecord, 0, 1, expressions);
+                            LinkedHashMap<Object, DatabaseRecord> result = ((DatabaseRecord) this).getController().searchBy(privilege, referencedRecord, 0, 1, expressions);
                             if (result != null && !result.isEmpty()) {
                                 DatabaseRecord fetchedRecord = result.values().iterator().next();
                                 // Assign to the specified field
@@ -383,7 +383,7 @@ public interface RSCodable {
 
                                 // Execute search
                                 DatabaseRecord referencedRecord = fkl.type().getDeclaredConstructor(DatabaseTableService.class).newInstance(((DatabaseRecord) this).getController());
-                                LinkedHashMap<Object, DatabaseRecord> result = ((DatabaseRecord) this).getController().searchBy(referencedRecord, 0, 1, expressions);
+                                LinkedHashMap<Object, DatabaseRecord> result = ((DatabaseRecord) this).getController().searchBy(privilege, referencedRecord, 0, 1, expressions);
                                 if (result != null && !result.isEmpty()) {
                                     DatabaseRecord fetchedRecord = result.values().iterator().next();
                                     // Assign to the specified field

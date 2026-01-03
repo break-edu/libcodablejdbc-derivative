@@ -9,4 +9,10 @@ import java.lang.annotation.Target;
 @Target({ElementType.FIELD})
 public @interface Column {
     String mapTo() default "";
+    int minAccessLevel() default 0;
+    int[] allowedAccessLevels() default {};
+    int readMinAccessLevel() default 0;
+    int[] readAllowedAccessLevels() default {};
+    int writeMinAccessLevel() default 0;
+    int[] writeAllowedAccessLevels() default {};
 }
