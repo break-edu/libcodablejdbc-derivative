@@ -11,7 +11,7 @@ public class SearchExpression {
     private boolean negate = false;
     private boolean startsWith = false;
     private boolean endsWith = false;
-    private Object[] in;
+    private Object[] in = new Object[0];
 
     public SearchExpression column(String column) {
         this.column = column;
