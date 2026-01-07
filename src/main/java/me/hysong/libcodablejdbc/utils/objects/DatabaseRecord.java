@@ -77,7 +77,7 @@ public abstract class DatabaseRecord implements RSCodable {
         return controller.selectBy(privilege, this, offset, limit, columnNames, values);
     }
 
-    public LinkedHashMap<Object, DatabaseRecord> selectBy(int privilege, String[] columnNames) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
+    public LinkedHashMap<Object, DatabaseRecord> selectBy(int privilege, String ... columnNames) throws JDBCReflectionGeneralException, SQLException, InitializationViolationException, IOException {
         return selectBy(privilege, columnNames, 0, -1);
     }
 
